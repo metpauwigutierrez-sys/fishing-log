@@ -23,6 +23,8 @@
   #form.hidden{display:none}
   #form input,#form textarea{padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px}
   #statusBar{position:absolute;bottom:5px;left:5px;z-index:1000;background:rgba(0,0,0,.6);color:#fff;padding:4px 8px;font-size:12px;border-radius:4px;display:none}
+  .popup-actions{text-align:right;margin-top:8px}
+  .popup-edit{color:red;font-weight:bold;cursor:pointer;font-size:14px}
 </style>
 </head>
 <body>
@@ -38,7 +40,7 @@
   <div id="spotNamesContainer"></div>
 </div>
 <div id="form" class="hidden">
-  <h3 style="margin:0">添加钓点</h3>
+  <h3 style="margin:0" id="formTitle">添加钓点</h3>
   <input id="name" placeholder="钓点名称">
   <input id="fish" placeholder="鱼种，例如鲫鱼、鲤鱼">
   <textarea id="note" placeholder="备注：饵料、天气、水深等"></textarea>
@@ -68,6 +70,8 @@ let spots = JSON.parse(localStorage.getItem('fishing_spots') || '[]');
 let markers = [];
 let tempLatLng = null;
 let currentSha = null;
+let editingIndex = -1;
+let longPressTimer = null;
 
 function showStatus(msg, duration) {
   const bar = document.getElementById('statusBar');
@@ -133,13 +137,40 @@ async function pushSharedData() {
 function render() {
   markers.forEach(m => map.removeLayer(m));
   markers = [];
-  spots.forEach(s => {
-    const marker = L.marker([s.lat, s.lng]).addTo(map).bindPopup(`<b>${s.name}</b><br>${s.fish || ''}<br>${s.note || ''}`);
+  spots.forEach((s, idx) => {
+    const popupContent = `
+      <b>${s.name}</b><br>
+      鱼种：${s.fish || '无'}<br>
+      备注：${s.note || '无'}
+      <div class="popup-actions">
+        <span class="popup-edit" onclick="editSpot(${idx})">修改</span>
+      </div>
+    `;
+    const marker = L.marker([s.lat, s.lng]).addTo(map).bindPopup(popupContent);
+
+    marker.on('contextmenu', () => {
+      if (confirm('确定要删除这个钓点吗？此操作不可恢复。')) {
+        deleteSpot(idx);
+      }
+    });
+
+    marker.on('mousedown', () => {
+      longPressTimer = setTimeout(() => {
+        if (confirm('确定要删除这个钓点吗？此操作不可恢复。')) {
+          deleteSpot(idx);
+        }
+      }, 800);
+    });
+    marker.on('mouseup', () => clearTimeout(longPressTimer));
+    marker.on('mouseout', () => clearTimeout(longPressTimer));
+    marker.on('click', () => clearTimeout(longPressTimer));
+
     markers.push(marker);
   });
+
   const container = document.getElementById('spotNamesContainer');
   container.innerHTML = '';
-  spots.forEach((s) => {
+  spots.forEach((s, idx) => {
     const div = document.createElement('div');
     div.className = 'spot-item';
     div.textContent = s.name;
@@ -152,35 +183,66 @@ function render() {
   });
 }
 
+window.editSpot = function(idx) {
+  editingIndex = idx;
+  const s = spots[idx];
+  document.getElementById('name').value = s.name;
+  document.getElementById('fish').value = s.fish || '';
+  document.getElementById('note').value = s.note || '';
+  document.getElementById('formTitle').textContent = '修改钓点';
+  document.getElementById('form').classList.remove('hidden');
+  map.closePopup();
+};
+
+window.deleteSpot = async function(idx) {
+  spots.splice(idx, 1);
+  localStorage.setItem('fishing_spots', JSON.stringify(spots));
+  render();
+  await pushSharedData();
+};
+
 map.on('moveend', () => {
   const center = map.getCenter();
   localStorage.setItem('fishing_map_view', JSON.stringify({ lat: center.lat, lng: center.lng, zoom: map.getZoom() }));
 });
 
 map.on('click', e => {
+  if (!document.getElementById('form').classList.contains('hidden')) return;
   tempLatLng = e.latlng;
+  editingIndex = -1;
+  document.getElementById('name').value = '';
+  document.getElementById('fish').value = '';
+  document.getElementById('note').value = '';
+  document.getElementById('formTitle').textContent = '添加钓点';
   document.getElementById('form').classList.remove('hidden');
 });
 
 document.getElementById('saveBtn').onclick = async () => {
-  if (!tempLatLng) return;
   const name = document.getElementById('name').value.trim() || '未命名钓点';
   const fish = document.getElementById('fish').value.trim();
   const note = document.getElementById('note').value.trim();
-  spots.push({ lat: tempLatLng.lat, lng: tempLatLng.lng, name, fish, note, time: new Date().toISOString() });
+
+  if (editingIndex >= 0) {
+    spots[editingIndex].name = name;
+    spots[editingIndex].fish = fish;
+    spots[editingIndex].note = note;
+  } else {
+    if (!tempLatLng) return;
+    spots.push({ lat: tempLatLng.lat, lng: tempLatLng.lng, name, fish, note, time: new Date().toISOString() });
+  }
+
   localStorage.setItem('fishing_spots', JSON.stringify(spots));
   render();
   document.getElementById('form').classList.add('hidden');
-  document.getElementById('name').value = '';
-  document.getElementById('fish').value = '';
-  document.getElementById('note').value = '';
   tempLatLng = null;
+  editingIndex = -1;
   await pushSharedData();
 };
 
 document.getElementById('cancelBtn').onclick = () => {
   document.getElementById('form').classList.add('hidden');
   tempLatLng = null;
+  editingIndex = -1;
 };
 
 document.getElementById('locBtn').onclick = () => {

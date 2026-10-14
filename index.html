@@ -11,16 +11,31 @@
   .top-btn{position:absolute;top:10px;z-index:1000;background:#fff;border:1px solid #ccc;border-radius:6px;padding:8px 12px;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.2);white-space:nowrap}
   #locBtn{left:10px}
   #menuBtn{right:10px}
+  
+  /* 菜单面板 */
   #menuPanel{position:absolute;top:50px;right:10px;z-index:1000;background:#fff;border:1px solid #ccc;border-radius:6px;padding:10px;box-shadow:0 2px 10px rgba(0,0,0,.2);display:none;min-width:80px}
   #menuPanel button{display:block;width:100%;padding:8px;margin-bottom:5px;border:none;background:#f5f5f5;border-radius:4px;font-size:14px}
+  
+  /* 标点列表面板 */
   #spotListPanel{position:absolute;top:50px;right:10px;z-index:1000;background:#fff;border:1px solid #ccc;border-radius:6px;padding:10px;box-shadow:0 2px 10px rgba(0,0,0,.2);display:none;max-height:60vh;overflow-y:auto;width:150px}
   #spotListPanel h4{margin:0 0 10px 0;font-size:14px;color:#333;border-bottom:1px solid #eee;padding-bottom:5px}
   .spot-item{padding:8px 5px;border-bottom:1px solid #eee;font-size:14px;cursor:pointer;word-break:break-all}
   .spot-item:last-child{border-bottom:none}
   .spot-item:active{background:#e0f0ff}
+  
+  /* 导入导出面板 */
+  #importExportPanel{position:absolute;top:50px;right:10px;z-index:1000;background:#fff;border:1px solid #ccc;border-radius:6px;padding:15px;box-shadow:0 2px 10px rgba(0,0,0,.2);display:none;width:220px}
+  #importExportPanel h4{margin:0 0 10px 0;font-size:14px;color:#333;border-bottom:1px solid #eee;padding-bottom:5px}
+  #importExportPanel button{width:100%;padding:8px;margin-bottom:8px;border:none;background:#f5f5f5;border-radius:4px;font-size:14px;cursor:pointer}
+  .import-label{display:block;width:100%;padding:8px;margin-bottom:8px;background:#f5f5f5;border-radius:4px;font-size:14px;text-align:center;box-sizing:border-box;cursor:pointer}
+  .red-tutorial{color:red;font-size:12px;line-height:1.5;margin-top:10px;padding-top:10px;border-top:1px dashed #eee}
+  
+  /* 表单 */
   #form{position:absolute;bottom:0;left:0;right:0;background:#fff;z-index:1000;padding:12px;box-shadow:0 -2px 10px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:8px}
   #form.hidden{display:none}
   #form input,#form textarea{padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px}
+  
+  /* 弹窗操作 */
   .popup-actions{text-align:right;margin-top:8px}
   .popup-edit{color:green;font-weight:bold;cursor:pointer;font-size:14px;margin-right:20px}
   .popup-delete{color:red;font-weight:bold;cursor:pointer;font-size:14px}
@@ -30,13 +45,32 @@
 <div id="map"></div>
 <button id="locBtn" class="top-btn">定位</button>
 <button id="menuBtn" class="top-btn">菜单</button>
+
 <div id="menuPanel">
   <button id="viewSpotList">标点</button>
+  <button id="viewImportExport">导入导出标点</button>
 </div>
+
 <div id="spotListPanel">
   <h4>钓点列表</h4>
   <div id="spotNamesContainer"></div>
 </div>
+
+<div id="importExportPanel">
+  <h4>导入导出标点</h4>
+  <button id="exportBtn">导出标点（下载文件）</button>
+  <label class="import-label">
+    导入标点（选择文件）
+    <input type="file" id="importFileInput" accept=".json" style="display:none">
+  </label>
+  <div class="red-tutorial">
+    <b>教程：</b><br>
+    1. 点击“导出标点”，会下载一个 spots.json 文件，请保存好，这就是你的所有钓鱼日记。<br>
+    2. 点击“导入标点”，选择之前导出的 spots.json 文件，即可恢复数据。<br>
+    ⚠️ 注意：导入会覆盖当前所有标点，建议先导出备份。
+  </div>
+</div>
+
 <div id="form" class="hidden">
   <h3 style="margin:0" id="formTitle">添加钓点</h3>
   <input id="name" placeholder="钓点名称">
@@ -165,16 +199,57 @@ document.getElementById('locBtn').onclick = () => {
   );
 };
 
+// 菜单交互
 document.getElementById('menuBtn').onclick = () => {
   const menu = document.getElementById('menuPanel');
   const list = document.getElementById('spotListPanel');
+  const impexp = document.getElementById('importExportPanel');
   list.style.display = 'none';
+  impexp.style.display = 'none';
   menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
 };
 
 document.getElementById('viewSpotList').onclick = () => {
   document.getElementById('menuPanel').style.display = 'none';
   document.getElementById('spotListPanel').style.display = 'block';
+};
+
+document.getElementById('viewImportExport').onclick = () => {
+  document.getElementById('menuPanel').style.display = 'none';
+  document.getElementById('importExportPanel').style.display = 'block';
+};
+
+// 导出功能
+document.getElementById('exportBtn').onclick = () => {
+  const blob = new Blob([JSON.stringify(spots, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'spots.json';
+  a.click();
+};
+
+// 导入功能
+document.getElementById('importFileInput').onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (Array.isArray(data)) {
+        spots = data;
+        localStorage.setItem('fishing_spots', JSON.stringify(spots));
+        render();
+        alert('导入成功！');
+        document.getElementById('importExportPanel').style.display = 'none';
+      } else {
+        alert('文件格式错误，请导入正确的 JSON 文件。');
+      }
+    } catch (err) {
+      alert('文件解析失败，请检查文件是否损坏。');
+    }
+  };
+  reader.readAsText(file);
 };
 
 render();

@@ -53,13 +53,11 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ============ 已为你自动填好 ============
-const GITHUB_OWNER = 'metpauwigutierrez-sys';
-const GITHUB_REPO = 'fishing-log';
-const GITHUB_TOKEN = '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';
+const GIST_ID = '57c3775ff16d4e9b6908f92d809c1ad3'; // 你的 Gist ID
+const GITHUB_TOKEN = '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'; // 你的新令牌
 // =====================================
 
-const GITHUB_FILE = 'spots.json';
-const GITHUB_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
+const GIST_API = `https://api.github.com/gists/${GIST_ID}`;
 
 const savedView = JSON.parse(localStorage.getItem('fishing_map_view') || 'null');
 const initialCenter = savedView ? [savedView.lat, savedView.lng] : [28.0, 115.0];
@@ -70,7 +68,6 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/
 let spots = JSON.parse(localStorage.getItem('fishing_spots') || '[]');
 let markers = [];
 let tempLatLng = null;
-let currentSha = null;
 let editingIndex = -1;
 
 function showStatus(msg, duration) {
@@ -82,47 +79,45 @@ function showStatus(msg, duration) {
 
 async function fetchSharedData() {
   try {
-    const res = await fetch(GITHUB_API + '?t=' + Date.now(), {
+    const res = await fetch(GIST_API + '?t=' + Date.now(), {
       headers: { 'Authorization': 'Bearer ' + GITHUB_TOKEN }
     });
-    if (res.status === 404) { currentSha = null; return; }
+    if (!res.ok) throw new Error('拉取失败');
     const data = await res.json();
-    currentSha = data.sha;
-    const content = JSON.parse(decodeURIComponent(escape(atob(data.content.replace(/\n/g, '')))));
-    if (Array.isArray(content) && content.length > 0) {
-      spots = content;
-      localStorage.setItem('fishing_spots', JSON.stringify(spots));
-      render();
-      showStatus('已同步最新数据', 2000);
+    if (data.files && data.files['spots.json']) {
+      const content = JSON.parse(data.files['spots.json'].content);
+      if (Array.isArray(content) && content.length > 0) {
+        spots = content;
+        localStorage.setItem('fishing_spots', JSON.stringify(spots));
+        render();
+        showStatus('已同步最新数据', 2000);
+      }
     }
   } catch (e) {
     console.log('拉取失败:', e);
-    showStatus('同步失败，使用本地数据', 2000);
+    showStatus('网络不通，使用本地数据', 2000);
   }
 }
 
 async function pushSharedData() {
   showStatus('正在上传到服务器...');
   try {
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(spots, null, 2))));
-    const body = {
-      message: '更新钓点数据 ' + new Date().toLocaleString(),
-      content: content
-    };
-    if (currentSha) body.sha = currentSha;
-
-    const res = await fetch(GITHUB_API, {
-      method: 'PUT',
+    const res = await fetch(GIST_API, {
+      method: 'PATCH',
       headers: {
         'Authorization': 'Bearer ' + GITHUB_TOKEN,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        files: {
+          'spots.json': {
+            content: JSON.stringify(spots, null, 2)
+          }
+        }
+      })
     });
 
     if (res.ok) {
-      const result = await res.json();
-      currentSha = result.content.sha;
       showStatus('✅ 已共享给所有人', 3000);
     } else {
       const err = await res.text();

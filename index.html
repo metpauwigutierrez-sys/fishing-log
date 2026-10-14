@@ -24,7 +24,8 @@
   #form input,#form textarea{padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px}
   #statusBar{position:absolute;bottom:5px;left:5px;z-index:1000;background:rgba(0,0,0,.6);color:#fff;padding:4px 8px;font-size:12px;border-radius:4px;display:none}
   .popup-actions{text-align:right;margin-top:8px}
-  .popup-edit{color:red;font-weight:bold;cursor:pointer;font-size:14px}
+  .popup-edit{color:green;font-weight:bold;cursor:pointer;font-size:14px;margin-right:20px}
+  .popup-delete{color:red;font-weight:bold;cursor:pointer;font-size:14px}
 </style>
 </head>
 <body>
@@ -71,7 +72,6 @@ let markers = [];
 let tempLatLng = null;
 let currentSha = null;
 let editingIndex = -1;
-let longPressTimer = null;
 
 function showStatus(msg, duration) {
   const bar = document.getElementById('statusBar');
@@ -83,7 +83,7 @@ function showStatus(msg, duration) {
 async function fetchSharedData() {
   try {
     const res = await fetch(GITHUB_API + '?t=' + Date.now(), {
-      headers: { 'Authorization': 'token ' + GITHUB_TOKEN }
+      headers: { 'Authorization': 'Bearer ' + GITHUB_TOKEN }
     });
     if (res.status === 404) { currentSha = null; return; }
     const data = await res.json();
@@ -114,7 +114,7 @@ async function pushSharedData() {
     const res = await fetch(GITHUB_API, {
       method: 'PUT',
       headers: {
-        'Authorization': 'token ' + GITHUB_TOKEN,
+        'Authorization': 'Bearer ' + GITHUB_TOKEN,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(body)
@@ -144,27 +144,10 @@ function render() {
       备注：${s.note || '无'}
       <div class="popup-actions">
         <span class="popup-edit" onclick="editSpot(${idx})">修改</span>
+        <span class="popup-delete" onclick="deleteSpot(${idx})">删除</span>
       </div>
     `;
     const marker = L.marker([s.lat, s.lng]).addTo(map).bindPopup(popupContent);
-
-    marker.on('contextmenu', () => {
-      if (confirm('确定要删除这个钓点吗？此操作不可恢复。')) {
-        deleteSpot(idx);
-      }
-    });
-
-    marker.on('mousedown', () => {
-      longPressTimer = setTimeout(() => {
-        if (confirm('确定要删除这个钓点吗？此操作不可恢复。')) {
-          deleteSpot(idx);
-        }
-      }, 800);
-    });
-    marker.on('mouseup', () => clearTimeout(longPressTimer));
-    marker.on('mouseout', () => clearTimeout(longPressTimer));
-    marker.on('click', () => clearTimeout(longPressTimer));
-
     markers.push(marker);
   });
 
@@ -195,9 +178,11 @@ window.editSpot = function(idx) {
 };
 
 window.deleteSpot = async function(idx) {
+  if (!confirm('确定要删除这个钓点吗？此操作不可恢复。')) return;
   spots.splice(idx, 1);
   localStorage.setItem('fishing_spots', JSON.stringify(spots));
   render();
+  map.closePopup();
   await pushSharedData();
 };
 

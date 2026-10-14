@@ -10,6 +10,8 @@
   #map{position:absolute;top:0;bottom:0;left:0;right:0}
   .top-btn{position:absolute;top:10px;z-index:1000;background:#fff;border:1px solid #ccc;border-radius:6px;padding:8px 12px;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.2);white-space:nowrap}
   #locBtn{left:10px}
+  #refreshBtn{left:75px}
+  #searchBtn{right:75px;font-size:16px;padding:8px 10px}
   #menuBtn{right:10px}
   
   /* 菜单面板 */
@@ -44,6 +46,8 @@
 <body>
 <div id="map"></div>
 <button id="locBtn" class="top-btn">定位</button>
+<button id="refreshBtn" class="top-btn">刷新</button>
+<button id="searchBtn" class="top-btn">🔎</button>
 <button id="menuBtn" class="top-btn">菜单</button>
 
 <div id="menuPanel">
@@ -197,6 +201,38 @@ document.getElementById('locBtn').onclick = () => {
     err => alert('定位失败：' + err.message),
     { enableHighAccuracy: true }
   );
+};
+
+// 刷新按钮功能（重新从本地读取数据）
+document.getElementById('refreshBtn').onclick = () => {
+  spots = JSON.parse(localStorage.getItem('fishing_spots') || '[]');
+  render();
+  alert('本地数据已刷新');
+};
+
+// 新增：搜索按钮功能
+document.getElementById('searchBtn').onclick = () => {
+  const keyword = prompt('请输入要查找的钓点名称：');
+  if (!keyword) return;
+
+  // 关闭面板
+  document.getElementById('spotListPanel').style.display = 'none';
+  document.getElementById('importExportPanel').style.display = 'none';
+  document.getElementById('menuPanel').style.display = 'none';
+
+  // 模糊搜索：找到名称包含关键词的钓点
+  const matched = spots.filter(s => s.name.includes(keyword));
+  
+  if (matched.length > 0) {
+    // 定位到第一个匹配项
+    const target = matched[0];
+    map.setView([target.lat, target.lng], 16);
+    if (matched.length > 1) {
+      alert(`找到 ${matched.length} 个包含“${keyword}”的钓点，已定位到第一个。`);
+    }
+  } else {
+    alert(`没有找到名称包含“${keyword}”的钓点。`);
+  }
 };
 
 // 菜单交互

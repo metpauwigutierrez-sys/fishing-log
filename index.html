@@ -8,119 +8,181 @@
 <style>
   html,body,#map{height:100%;margin:0}
   #map{position:absolute;top:0;bottom:0;left:0;right:0}
-  #panel{position:absolute;top:10px;left:10px;z-index:1000;display:flex;gap:6px;flex-wrap:wrap}
-  #panel button,.btn{
-    padding:8px 10px;background:#fff;border:1px solid #ccc;border-radius:6px;
-    font-size:14px;display:inline-block
-  }
-  #importFile{display:none}
-  #form{
-    position:absolute;bottom:0;left:0;right:0;background:#fff;z-index:1000;
-    padding:12px;box-shadow:0 -2px 10px rgba(0,0,0,.2);
-    display:flex;flex-direction:column;gap:8px
-  }
+  .top-btn{position:absolute;top:10px;z-index:1000;background:#fff;border:1px solid #ccc;border-radius:6px;padding:8px 10px;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+  #panel{left:10px;display:flex;gap:6px}
+  #menuBtn{right:10px}
+  #menuPanel{position:absolute;top:50px;right:10px;z-index:1000;background:#fff;border:1px solid #ccc;border-radius:6px;padding:10px;box-shadow:0 2px 10px rgba(0,0,0,.2);display:none;min-width:80px}
+  #menuPanel button{display:block;width:100%;padding:8px;margin-bottom:5px;border:none;background:#f5f5f5;border-radius:4px;font-size:14px}
+  #spotListPanel{position:absolute;top:50px;right:10px;z-index:1000;background:#fff;border:1px solid #ccc;border-radius:6px;padding:10px;box-shadow:0 2px 10px rgba(0,0,0,.2);display:none;max-height:60vh;overflow-y:auto;width:150px}
+  #spotListPanel h4{margin:0 0 10px 0;font-size:14px;color:#333;border-bottom:1px solid #eee;padding-bottom:5px}
+  .spot-item{padding:8px 5px;border-bottom:1px solid #eee;font-size:14px;cursor:pointer;word-break:break-all}
+  .spot-item:last-child{border-bottom:none}
+  .spot-item:active{background:#e0f0ff}
+  #form{position:absolute;bottom:0;left:0;right:0;background:#fff;z-index:1000;padding:12px;box-shadow:0 -2px 10px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:8px}
   #form.hidden{display:none}
-  #form input,#form textarea{
-    padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px
-  }
-  #list{
-    position:absolute;top:60px;left:10px;z-index:1000;
-    max-height:40%;overflow:auto;width:65%
-  }
-  .item{
-    background:#fff;padding:8px;margin-bottom:5px;border-radius:6px;
-    box-shadow:0 1px 4px rgba(0,0,0,.2);font-size:14px
-  }
+  #form input,#form textarea{padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px}
+  #statusBar{position:absolute;bottom:5px;left:5px;z-index:1000;background:rgba(0,0,0,.6);color:#fff;padding:4px 8px;font-size:12px;border-radius:4px;display:none}
 </style>
 </head>
 <body>
-
 <div id="map"></div>
-
 <div id="panel">
-  <button id="locBtn">定位</button>
-  <button id="exportBtn">导出</button>
-  <label class="btn">导入<input type="file" id="importFile" accept=".json"></label>
+  <button id="locBtn" class="top-btn">定位</button>
+  <button id="refreshBtn" class="top-btn">刷新</button>
 </div>
-
+<button id="menuBtn" class="top-btn">菜单</button>
+<div id="menuPanel">
+  <button id="viewSpotList">标点</button>
+</div>
+<div id="spotListPanel">
+  <h4>钓点列表</h4>
+  <div id="spotNamesContainer"></div>
+</div>
 <div id="form" class="hidden">
   <h3 style="margin:0">添加钓点</h3>
   <input id="name" placeholder="钓点名称">
   <input id="fish" placeholder="鱼种，例如鲫鱼、鲤鱼">
   <textarea id="note" placeholder="备注：饵料、天气、水深等"></textarea>
-  <button id="saveBtn">保存</button>
+  <button id="saveBtn">保存并共享</button>
   <button id="cancelBtn">取消</button>
 </div>
-
-<div id="list"></div>
+<div id="statusBar"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const map = L.map('map').setView([28.0, 115.0], 10);
+// ============ 已为你自动填好 ============
+const GITHUB_OWNER = 'metpauwigutierrez-sys';
+const GITHUB_REPO = 'fishing-log';
+const GITHUB_TOKEN = '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';
+// ========================================
 
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  attribution: '© Esri'
-}).addTo(map);
+const GITHUB_FILE = 'spots.json';
+const GITHUB_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
+
+// 初始化地图
+const savedView = JSON.parse(localStorage.getItem('fishing_map_view') || 'null');
+const initialCenter = savedView ? [savedView.lat, savedView.lng] : [28.0, 115.0];
+const initialZoom = savedView ? savedView.zoom : 10;
+const map = L.map('map').setView(initialCenter, initialZoom);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri' }).addTo(map);
 
 let spots = JSON.parse(localStorage.getItem('fishing_spots') || '[]');
 let markers = [];
 let tempLatLng = null;
+let currentSha = null;
 
-function save() {
-  localStorage.setItem('fishing_spots', JSON.stringify(spots));
-  render();
+function showStatus(msg, duration) {
+  const bar = document.getElementById('statusBar');
+  bar.textContent = msg;
+  bar.style.display = 'block';
+  if (duration) setTimeout(() => bar.style.display = 'none', duration);
+}
+
+// 从 GitHub 拉取最新数据
+async function fetchSharedData() {
+  try {
+    const res = await fetch(GITHUB_API + '?t=' + Date.now(), {
+      headers: { 'Authorization': 'token ' + GITHUB_TOKEN }
+    });
+    if (res.status === 404) {
+      currentSha = null;
+      return;
+    }
+    const data = await res.json();
+    currentSha = data.sha;
+    const content = JSON.parse(decodeURIComponent(escape(atob(data.content.replace(/\n/g, '')))));
+    if (Array.isArray(content) && content.length > 0) {
+      spots = content;
+      localStorage.setItem('fishing_spots', JSON.stringify(spots));
+      render();
+      showStatus('已同步最新数据', 2000);
+    }
+  } catch (e) {
+    console.log('拉取失败:', e);
+    showStatus('同步失败，使用本地数据', 2000);
+  }
+}
+
+// 上传数据到 GitHub
+async function pushSharedData() {
+  showStatus('正在上传到服务器...');
+  try {
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(spots, null, 2))));
+    const body = {
+      message: '更新钓点数据 ' + new Date().toLocaleString(),
+      content: content
+    };
+    if (currentSha) body.sha = currentSha;
+
+    const res = await fetch(GITHUB_API, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'token ' + GITHUB_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (res.ok) {
+      const result = await res.json();
+      currentSha = result.content.sha;
+      showStatus('✅ 已共享给所有人', 3000);
+    } else {
+      const err = await res.text();
+      console.log(err);
+      showStatus('❌ 上传失败，请检查令牌', 3000);
+    }
+  } catch (e) {
+    showStatus('❌ 网络异常，上传失败', 3000);
+  }
 }
 
 function render() {
   markers.forEach(m => map.removeLayer(m));
   markers = [];
-
-  const list = document.getElementById('list');
-  list.innerHTML = '';
-
   spots.forEach(s => {
-    const marker = L.marker([s.lat, s.lng])
-      .addTo(map)
-      .bindPopup(`<b>${s.name}</b><br>${s.fish || ''}<br>${s.note || ''}`);
-
+    const marker = L.marker([s.lat, s.lng]).addTo(map).bindPopup(`<b>${s.name}</b><br>${s.fish || ''}<br>${s.note || ''}`);
     markers.push(marker);
-
+  });
+  const container = document.getElementById('spotNamesContainer');
+  container.innerHTML = '';
+  spots.forEach((s) => {
     const div = document.createElement('div');
-    div.className = 'item';
-    div.innerHTML = `<b>${s.name}</b><br>${s.fish || ''} ${s.note || ''}`;
-    div.onclick = () => map.setView([s.lat, s.lng], 15);
-    list.appendChild(div);
+    div.className = 'spot-item';
+    div.textContent = s.name;
+    div.onclick = () => {
+      map.setView([s.lat, s.lng], 15);
+      document.getElementById('spotListPanel').style.display = 'none';
+      document.getElementById('menuPanel').style.display = 'none';
+    };
+    container.appendChild(div);
   });
 }
+
+map.on('moveend', () => {
+  const center = map.getCenter();
+  localStorage.setItem('fishing_map_view', JSON.stringify({ lat: center.lat, lng: center.lng, zoom: map.getZoom() }));
+});
 
 map.on('click', e => {
   tempLatLng = e.latlng;
   document.getElementById('form').classList.remove('hidden');
 });
 
-document.getElementById('saveBtn').onclick = () => {
+document.getElementById('saveBtn').onclick = async () => {
   if (!tempLatLng) return;
-
   const name = document.getElementById('name').value.trim() || '未命名钓点';
   const fish = document.getElementById('fish').value.trim();
   const note = document.getElementById('note').value.trim();
-
-  spots.push({
-    lat: tempLatLng.lat,
-    lng: tempLatLng.lng,
-    name,
-    fish,
-    note,
-    time: new Date().toISOString()
-  });
-
-  save();
-
+  spots.push({ lat: tempLatLng.lat, lng: tempLatLng.lng, name, fish, note, time: new Date().toISOString() });
+  localStorage.setItem('fishing_spots', JSON.stringify(spots));
+  render();
   document.getElementById('form').classList.add('hidden');
   document.getElementById('name').value = '';
   document.getElementById('fish').value = '';
   document.getElementById('note').value = '';
   tempLatLng = null;
+  await pushSharedData();
 };
 
 document.getElementById('cancelBtn').onclick = () => {
@@ -133,41 +195,31 @@ document.getElementById('locBtn').onclick = () => {
     p => {
       const latlng = [p.coords.latitude, p.coords.longitude];
       map.setView(latlng, 15);
-      L.circleMarker(latlng, { radius: 8, color: 'blue' })
-        .addTo(map)
-        .bindPopup('你在这里')
-        .openPopup();
+      L.circleMarker(latlng, { radius: 8, color: 'blue' }).addTo(map).bindPopup('你在这里').openPopup();
     },
     err => alert('定位失败：' + err.message),
     { enableHighAccuracy: true }
   );
 };
 
-document.getElementById('exportBtn').onclick = () => {
-  const blob = new Blob([JSON.stringify(spots, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'fishing_spots.json';
-  a.click();
+document.getElementById('refreshBtn').onclick = async () => {
+  await fetchSharedData();
 };
 
-document.getElementById('importFile').onchange = e => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      spots = JSON.parse(reader.result);
-      save();
-      alert('导入成功');
-    } catch (err) {
-      alert('文件格式错误');
-    }
-  };
-  reader.readAsText(file);
+document.getElementById('menuBtn').onclick = () => {
+  const menu = document.getElementById('menuPanel');
+  const list = document.getElementById('spotListPanel');
+  list.style.display = 'none';
+  menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
 };
 
+document.getElementById('viewSpotList').onclick = () => {
+  document.getElementById('menuPanel').style.display = 'none';
+  document.getElementById('spotListPanel').style.display = 'block';
+};
+
+// 启动
+fetchSharedData();
 render();
 </script>
 </body>
